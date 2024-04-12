@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pth
+output/
+
+/train_viz
+/wandb
+/model/weight

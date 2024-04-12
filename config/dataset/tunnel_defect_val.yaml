@@ -1,0 +1,16 @@
+dataset:
+  target: dataset.tunnel_defect.TunnelDefectDataset
+  params:
+    file_list: /home/datasets/tunnel-defect-v5-patch2/val.txt
+    image_root: /home/datasets/tunnel-defect-v5-patch2/images/validation
+    annotation_root: /home/datasets/tunnel-defect-v5-patch2/annotations/validation
+    image_format: jpg
+    annotation_format: png
+    out_size: 512
+    apply_transform: false
+
+data_loader:
+  batch_size: 16
+  shuffle: false
+  num_workers: 16
+  drop_last: true

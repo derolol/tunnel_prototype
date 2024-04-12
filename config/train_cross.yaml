@@ -1,0 +1,67 @@
+data:
+  target: dataset.data_module.DataModule
+  params:
+    num_classes: 3
+    # Path to training set configuration file.
+    train_config: config/dataset/tunnel_defect_train.yaml
+    # Path to validation set configuration file.
+    val_config: config/dataset/tunnel_defect_val.yaml
+
+model:
+  target: model.cross_segformer_module.ModelModule
+  params:
+    model_config: config/model/cross_segformerb0.yaml
+    resume:
+    learning_rate: 1e-3
+    num_classes: 3
+    type_classes: ["background", "crack", "tile_peeling"]
+    color_map: [[0, 0, 0], [255, 0, 0], [0, 255, 0]]
+
+lightning:
+  seed: 231
+  
+  trainer:
+    accelerator: cuda
+    precision: 32
+    strategy: ddp_find_unused_parameters_true
+    # Indices of GPUs used for training.
+    devices: 4
+    num_nodes: 1
+    # Path to save logs and checkpoints.
+    default_root_dir: output
+    # Max number of training steps (batches).
+    max_steps: 10000
+    # Validation frequency in terms of training steps.
+    val_check_interval: 100
+    check_val_every_n_epoch:
+    log_every_n_steps: 100
+    # Accumulate gradients from multiple batches so as to increase batch size.
+    accumulate_grad_batches: 1
+  
+  logger:
+    target: logger.tensorboard_logger.TensorBoardLogger
+    params:
+      save_dir: train_viz
+      name: tunnel_defect
+    # target: logger.comet_logger.CometLogger
+    # params:
+    #   api_key: MF99GuEcNVhhwEOjV9xcGbpw3
+    #   workspace: derolol
+    #   save_dir: comet_viz
+    #   project_name: tunnel_defect
+    # target: logger.neptune_logger.MyNeptuneLogger
+  
+  callbacks:
+    - target: callback.image_logger.ImageLogger
+      params:
+        # Log frequency of image logger.
+        log_every_n_steps: 100
+        max_images_each_step: 4
+        log_images_kwargs: ~
+
+    - target: callback.model_checkpoint.ModelCheckpoint
+      params:
+        # Frequency of saving checkpoints.
+        every_n_train_steps: 2000
+        save_top_k: 1
+        filename: "{step}"
