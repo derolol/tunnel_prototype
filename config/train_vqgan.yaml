@@ -1,0 +1,73 @@
+data:
+  target: dataset.data_module.DataModule
+  params:
+    num_classes: 3
+    # Path to training set configuration file.
+    train_config: config/dataset/tunnel_defect_b4_train.yaml
+    # Path to validation set configuration file.
+    val_config: config/dataset/tunnel_defect_b4_val.yaml
+
+model:
+  target: model.vqgan_patch_seg_module.ModelModule
+  params:
+    learning_rate: 2.25e-05
+    latent_dim: 256
+    image_size: 512
+    num_codebook_vectors: 1024
+    beta: 0.25
+    image_channels: 3
+    beta1: 0.5
+    beta2: 0.9
+    disc_start: 1000 #10000
+    disc_factor: 1.0
+    rec_loss_factor: 1.0
+    perceptual_loss_factor: 1.0
+
+lightning:
+  seed: 231
+  
+  trainer:
+    accelerator: cuda
+    precision: 32
+    strategy: ddp_find_unused_parameters_true
+    # Indices of GPUs used for training.
+    devices: 4
+    num_nodes: 1
+    # Path to save logs and checkpoints.
+    default_root_dir: output
+    # Max number of training steps (batches).
+    max_steps: 100000
+    # Validation frequency in terms of training steps.
+    val_check_interval: 5000
+    check_val_every_n_epoch:
+    log_every_n_steps: 5000
+    # Accumulate gradients from multiple batches so as to increase batch size.
+    accumulate_grad_batches: 1
+  
+  logger:
+    target: logger.tensorboard_logger.TensorBoardLogger
+    params:
+      save_dir: train_viz
+      name: tunnel_reconstruct_vqgan
+    # target: logger.comet_logger.CometLogger
+    # params:
+    #   api_key: MF99GuEcNVhhwEOjV9xcGbpw3
+    #   workspace: derolol
+    #   save_dir: comet_viz
+    #   project_name: tunnel_defect
+    # target: logger.neptune_logger.MyNeptuneLogger
+  
+  callbacks:
+    - target: callback.image_logger.ImageLogger
+      params:
+        # Log frequency of image logger.
+        log_every_n_steps: 5000
+        max_images_each_step: 4
+        log_images_kwargs: ~
+
+    - target: callback.model_checkpoint.ModelCheckpoint
+      params:
+        # Frequency of saving checkpoints.
+        every_n_train_steps: 5000
+        save_top_k: 1
+        filename: "{step}"

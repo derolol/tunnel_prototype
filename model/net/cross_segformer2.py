@@ -359,6 +359,43 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=GELU, norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
+        self.norm1      = norm_layer(dim)
+        
+        self.attn       = Attention(
+            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
+            attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio
+        )
+        self.norm2      = norm_layer(dim)
+        self.mlp        = Mlp(in_features=dim, hidden_features=int(dim * mlp_ratio), act_layer=act_layer, drop=drop)
+
+        self.drop_path  = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
+        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        return x
+
+class CrossBlock(nn.Module):
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., act_layer=GELU, norm_layer=nn.LayerNorm, sr_ratio=1):
+        super().__init__()
         self.norm1 = norm_layer(dim)
         self.norm_cross1 = norm_layer(dim)
         
@@ -439,7 +476,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm1 = norm_layer(embed_dims[0])
-        self.norm_cross1 = norm_layer(embed_dims[0])
         
         #----------------------------------#
         #   block2
@@ -469,7 +505,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm2 = norm_layer(embed_dims[1])
-        self.norm_cross2 = norm_layer(embed_dims[1])
 
         #----------------------------------#
         #   block3
@@ -499,7 +534,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm3 = norm_layer(embed_dims[2])
-        self.norm_cross3 = norm_layer(embed_dims[2])
 
         #----------------------------------#
         #   block4
@@ -529,7 +563,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm4 = norm_layer(embed_dims[3])
-        self.norm_cross4 = norm_layer(embed_dims[3])
 
         self.apply(self._init_weights)
 
@@ -548,7 +581,217 @@ class MixVisionTransformer(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
                 
-    def forward(self, x, context):
+    def forward(self, x):
+        B = x.shape[0]
+        outs = []
+        cross = []
+
+        #----------------------------------#
+        #   block1
+        #----------------------------------#
+        module_cross = []
+        x, H, W = self.patch_embed1.forward(x)
+        for i, blk in enumerate(self.block1):
+            x = blk.forward(x, H, W)
+            module_cross.append(x)
+        x = self.norm1(x)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+        outs.append(x)
+        cross.append(module_cross)
+
+        #----------------------------------#
+        #   block2
+        #----------------------------------#
+        module_cross = []
+        x, H, W = self.patch_embed2.forward(x)
+        for i, blk in enumerate(self.block2):
+            x = blk.forward(x, H, W)
+            module_cross.append(x)
+        x = self.norm2(x)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+        outs.append(x)
+        cross.append(module_cross)
+
+        #----------------------------------#
+        #   block3
+        #----------------------------------#
+        module_cross = []
+        x, H, W = self.patch_embed3.forward(x)
+        for i, blk in enumerate(self.block3):
+            x = blk.forward(x, H, W)
+            module_cross.append(x)
+        x = self.norm3(x)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+        outs.append(x)
+        cross.append(module_cross)
+
+        #----------------------------------#
+        #   block4
+        #----------------------------------#
+        module_cross = []
+        x, H, W = self.patch_embed4.forward(x)
+        for i, blk in enumerate(self.block4):
+            x = blk.forward(x, H, W)
+            module_cross.append(x)
+        x = self.norm4(x)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+        outs.append(x)
+        cross.append(module_cross)
+
+        return outs, cross
+
+class MixVisionCrossTransformer(nn.Module):
+    
+    def __init__(self,
+                 in_channels=3, num_classes=1000,
+                 embed_dims=[32, 64, 160, 256],
+                 num_heads=[1, 2, 4, 8],
+                 mlp_ratios=[4, 4, 4, 4], qkv_bias=False, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
+                 norm_layer=nn.LayerNorm,
+                 depths=[3, 4, 6, 3], sr_ratios=[8, 4, 2, 1]):
+        
+        super().__init__()
+        
+        self.num_classes    = num_classes
+        self.depths         = depths
+
+        #----------------------------------#
+        #   Transformer模块,共有四个部分
+        #----------------------------------#
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+
+        #----------------------------------#
+        #   block1
+        #----------------------------------#
+        #-----------------------------------------------#
+        #   对输入图像进行分区,并下采样
+        #   512, 512, 3 => 128, 128, 32 => 16384, 32
+        #-----------------------------------------------#
+        self.patch_embed1 = OverlapPatchEmbed(in_channels=in_channels, 
+                                              patch_size=7, stride=4, 
+                                              embed_dim=embed_dims[0])
+        #-----------------------------------------------#
+        #   利用transformer模块进行特征提取
+        #   16384, 32 => 16384, 32
+        #-----------------------------------------------#
+        cur = 0
+        self.block1 = nn.ModuleList(
+            [
+                CrossBlock(
+                    dim=embed_dims[0], num_heads=num_heads[0], mlp_ratio=mlp_ratios[0], qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[cur + i], norm_layer=norm_layer, sr_ratio=sr_ratios[0]
+                )
+                for i in range(depths[0])
+            ]
+        )
+        self.norm1 = norm_layer(embed_dims[0])
+        
+        #----------------------------------#
+        #   block2
+        #----------------------------------#
+        #-----------------------------------------------#
+        #   对输入图像进行分区,并下采样
+        #   128, 128, 32 => 64, 64, 64 => 4096, 64
+        #-----------------------------------------------#
+        self.patch_embed2 = OverlapPatchEmbed(in_channels=embed_dims[0],
+                                              patch_size=3, stride=2,
+                                              embed_dim=embed_dims[1])
+        #-----------------------------------------------#
+        #   利用transformer模块进行特征提取
+        #   4096, 64 => 4096, 64
+        #-----------------------------------------------#
+        cur += depths[0]
+        self.block2 = nn.ModuleList(
+            [
+                CrossBlock(
+                    dim=embed_dims[1],
+                    num_heads=num_heads[1], mlp_ratio=mlp_ratios[1],
+                    qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[cur + i],
+                    norm_layer=norm_layer, sr_ratio=sr_ratios[1]
+                )
+                for i in range(depths[1])
+            ]
+        )
+        self.norm2 = norm_layer(embed_dims[1])
+
+        #----------------------------------#
+        #   block3
+        #----------------------------------#
+        #-----------------------------------------------#
+        #   对输入图像进行分区,并下采样
+        #   64, 64, 64 => 32, 32, 160 => 1024, 160
+        #-----------------------------------------------#
+        self.patch_embed3 = OverlapPatchEmbed(in_channels=embed_dims[1],
+                                              patch_size=3, stride=2,
+                                              embed_dim=embed_dims[2])
+        #-----------------------------------------------#
+        #   利用transformer模块进行特征提取
+        #   1024, 160 => 1024, 160
+        #-----------------------------------------------#
+        cur += depths[1]
+        self.block3 = nn.ModuleList(
+            [
+                CrossBlock(
+                    dim=embed_dims[2],
+                    num_heads=num_heads[2], mlp_ratio=mlp_ratios[2], 
+                    qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[cur + i],
+                    norm_layer=norm_layer, sr_ratio=sr_ratios[2]
+                )
+                for i in range(depths[2])
+            ]
+        )
+        self.norm3 = norm_layer(embed_dims[2])
+
+        #----------------------------------#
+        #   block4
+        #----------------------------------#
+        #-----------------------------------------------#
+        #   对输入图像进行分区,并下采样
+        #   32, 32, 160 => 16, 16, 256 => 256, 256
+        #-----------------------------------------------#
+        self.patch_embed4 = OverlapPatchEmbed(in_channels=embed_dims[2],
+                                              patch_size=3, stride=2,
+                                              embed_dim=embed_dims[3])
+        #-----------------------------------------------#
+        #   利用transformer模块进行特征提取
+        #   256, 256 => 256, 256
+        #-----------------------------------------------#
+        cur += depths[2]
+        self.block4 = nn.ModuleList(
+            [
+                CrossBlock(
+                    dim=embed_dims[3],
+                    num_heads=num_heads[3], mlp_ratio=mlp_ratios[3],
+                    qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[cur + i],
+                    norm_layer=norm_layer, sr_ratio=sr_ratios[3]
+                )
+                for i in range(depths[3])
+            ]
+        )
+        self.norm4 = norm_layer(embed_dims[3])
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+                
+    def forward(self, x, cross):
         B = x.shape[0]
         outs = []
 
@@ -556,56 +799,44 @@ class MixVisionTransformer(nn.Module):
         #   block1
         #----------------------------------#
         x, H, W = self.patch_embed1.forward(x)
-        context, H_cross, W_cross = self.patch_embed1.forward(context)
         for i, blk in enumerate(self.block1):
             x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = x + blk.forward(x, cross[0][i], H, W)
         x = self.norm1(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross1(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block2
         #----------------------------------#
         x, H, W = self.patch_embed2.forward(x)
-        context, H_cross, W_cross = self.patch_embed2.forward(context)
         for i, blk in enumerate(self.block2):
             x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = x + blk.forward(x, cross[1][i], H, W)
         x = self.norm2(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross2(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block3
         #----------------------------------#
         x, H, W = self.patch_embed3.forward(x)
-        context, H_cross, W_cross = self.patch_embed3.forward(context)
         for i, blk in enumerate(self.block3):
             x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = x + blk.forward(x, cross[2][i], H, W)
         x = self.norm3(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross3(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block4
         #----------------------------------#
         x, H, W = self.patch_embed4.forward(x)
-        context, H_cross, W_cross = self.patch_embed4.forward(context)
         for i, blk in enumerate(self.block4):
             x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = x + blk.forward(x, cross[3][i], H, W)
         x = self.norm4(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross4(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         return outs
@@ -683,7 +914,7 @@ class SegFormerHead(nn.Module):
 
         return x
 
-class CrossSegFormer(nn.Module):
+class CrossSegFormer2(nn.Module):
     def __init__(self,
                  num_classes,
                  pretrained_path,
@@ -700,7 +931,19 @@ class CrossSegFormer(nn.Module):
         
         super().__init__()
         
-        self.backbone = MixVisionTransformer(in_channels=in_channels,
+        self.backbone1 = MixVisionTransformer(in_channels=in_channels,
+                                             num_classes=num_classes,
+                                             embed_dims=embed_dims,
+                                             num_heads=num_heads,
+                                             mlp_ratios=mlp_ratios,
+                                             qkv_bias=qkv_bias,
+                                             depths=depths,
+                                             sr_ratios=sr_ratios,
+                                             drop_rate=drop_rate,
+                                             drop_path_rate=drop_path_rate,
+                                             norm_layer=partial(nn.LayerNorm, eps=1e-6))
+        
+        self.backbone2 = MixVisionCrossTransformer(in_channels=in_channels,
                                              num_classes=num_classes,
                                              embed_dims=embed_dims,
                                              num_heads=num_heads,
@@ -714,28 +957,21 @@ class CrossSegFormer(nn.Module):
         if pretrained_path:
             print("Load backbone weights")
             state_dict = torch.load(pretrained_path)
-            if in_channels != 3:
-                new_state_dict = {}
-                for key, value in state_dict.items():
-                    if "patch_embed1.proj.weight" in key:
-                        O, I, H, W = value.shape
-                        new_value = torch.zeros(size=(O, in_channels, H, W))
-                        new_value[:, :I, :, :] = value
-                        new_state_dict[key] = new_value
-                        continue
-                    new_state_dict[key] = value
-                self.backbone.load_state_dict(state_dict=new_state_dict, strict=False)
-            else:
-                self.backbone.load_state_dict(state_dict=state_dict, strict=False)
+            self.backbone1.load_state_dict(state_dict=state_dict, strict=False)
+            self.backbone2.load_state_dict(state_dict=state_dict, strict=False)
 
         self.decode_head = SegFormerHead(num_classes=num_classes,
                                          in_channels=embed_dims,
                                          head_embed_dim=head_embed_dim)
+        # self.decode_head = SegFormerHead(num_classes=num_classes,
+        #                                  in_channels=embed_dims,
+        #                                  head_embed_dim=head_embed_dim)
 
     def forward(self, inputs, context):
         H, W = inputs.size(2), inputs.size(3)
         
-        x = self.backbone.forward(inputs, context)
+        outputs, cross = self.backbone1.forward(context)
+        x = self.backbone2.forward(inputs, cross)
         x = self.decode_head.forward(x)
         
         x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
@@ -743,7 +979,7 @@ class CrossSegFormer(nn.Module):
 
 if __name__ == '__main__':
 
-    model = CrossSegFormer(num_classes=3,
+    model = CrossSegFormer2(num_classes=3,
                            pretrained_path='/home/lib/generate_seg/model/weight/segformer_b0_backbone_weights.pth',
                            in_channels=3,
                            embed_dims=[32, 64, 160, 256],

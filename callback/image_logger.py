@@ -31,7 +31,7 @@ class ImageLogger(Callback):
         self.log_images_kwargs = log_images_kwargs or dict()
 
     @rank_zero_only
-    def on_train_batch_end(
+    def on_val_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT,
         batch: Any, batch_idx: int
     ) -> None:
@@ -46,7 +46,7 @@ class ImageLogger(Callback):
                 images: Dict[str, torch.Tensor] = pl_module.log_images(batch, outputs)
             
             # save images
-            save_dir = os.path.join(pl_module.logger.save_dir, "image_log", "train")
+            save_dir = os.path.join(pl_module.logger.save_dir, pl_module.logger.name, "image_log", "train")
             os.makedirs(save_dir, exist_ok=True)
             for image_key in images:
                 image = images[image_key].detach().cpu()

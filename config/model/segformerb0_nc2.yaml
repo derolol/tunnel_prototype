@@ -1,0 +1,14 @@
+target: model.net.segformer.SegFormer
+params:
+  num_classes: 2
+  pretrained_path: model/weight/segformer_b0_backbone_weights.pth
+  in_channels: 3
+  embed_dims: [32, 64, 160, 256]
+  num_heads: [1, 2, 5, 8]
+  mlp_ratios: [4, 4, 4, 4]
+  qkv_bias: True
+  depths: [2, 2, 2, 2]
+  sr_ratios: [8, 4, 2, 1]
+  drop_rate: 0.0
+  drop_path_rate: 0.1
+  head_embed_dim: 256

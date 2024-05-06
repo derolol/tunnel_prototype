@@ -1,8 +1,12 @@
 __pycache__/
 *.pyc
 *.pth
+*.ckpt
 output/
 
+/config/dataset/images
+
 /train_viz
+/train_crack500_viz
 /wandb
 /model/weight

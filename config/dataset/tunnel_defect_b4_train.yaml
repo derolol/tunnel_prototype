@@ -1,0 +1,19 @@
+dataset:
+  target: dataset.tunnel_defect.TunnelDefectDataset
+  params:
+    file_list: /home/datasets/tunnel-defect-v5-patch2/train.txt
+    image_root: /home/datasets/tunnel-defect-v5-patch2/images/training
+    annotation_root: /home/datasets/tunnel-defect-v5-patch2/annotations/training
+    image_format: jpg
+    annotation_format: png
+    out_size: 512
+    apply_transform: true
+
+data_loader:
+  batch_size: 4
+  shuffle: true
+  num_workers: 16
+  drop_last: true
+
+batch_transform:
+  target: dataset.batch_transform.IdentityBatchTransform

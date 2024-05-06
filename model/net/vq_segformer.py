@@ -204,77 +204,6 @@ class Attention(nn.Module):
 
         return x
 
-class CrossAttention(nn.Module):
-    
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
-        super().__init__()
-        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
-
-        self.dim        = dim
-        self.num_heads  = num_heads
-        head_dim        = dim // num_heads
-        self.scale      = qk_scale or head_dim ** -0.5
-
-        self.q          = nn.Linear(dim, dim, bias=qkv_bias)
-        
-        self.sr_ratio = sr_ratio
-        if sr_ratio > 1:
-            self.sr     = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
-            self.norm   = nn.LayerNorm(dim)
-        self.kv         = nn.Linear(dim, dim * 2, bias=qkv_bias)
-        
-        self.attn_drop  = nn.Dropout(attn_drop)
-        
-        self.proj       = nn.Linear(dim, dim)
-        self.proj_drop  = nn.Dropout(proj_drop)
-
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-
-    def forward(self, x, context, H, W):
-        B, N, C = x.shape
-        # bs, 16384, 32 => bs, 16384, 32 => bs, 16384, 8, 4 => bs, 8, 16384, 4
-        q = self.q(context).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-
-        if self.sr_ratio > 1:
-            # bs, 16384, 32 => bs, 32, 128, 128
-            x_ = x.permute(0, 2, 1).reshape(B, C, H, W)
-            # bs, 32, 128, 128 => bs, 32, 16, 16 => bs, 256, 32
-            x_ = self.sr(x_).reshape(B, C, -1).permute(0, 2, 1)
-            x_ = self.norm(x_)
-            # bs, 256, 32 => bs, 256, 64 => bs, 256, 2, 8, 4 => 2, bs, 8, 256, 4
-            kv = self.kv(x_).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        else:
-            kv = self.kv(x).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        k, v = kv[0], kv[1]
-
-        # bs, 8, 16384, 4 @ bs, 8, 4, 256 => bs, 8, 16384, 256 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        # bs, 8, 16384, 256  @ bs, 8, 256, 4 => bs, 8, 16384, 4 => bs, 16384, 32
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        # bs, 16384, 32 => bs, 16384, 32
-        x = self.proj(x)
-        x = self.proj_drop(x)
-
-        return x
-
 def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
     """
     Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
@@ -359,10 +288,9 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=GELU, norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
-        self.norm1 = norm_layer(dim)
-        self.norm_cross1 = norm_layer(dim)
+        self.norm1      = norm_layer(dim)
         
-        self.attn       = CrossAttention(
+        self.attn       = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
             attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio
         )
@@ -388,8 +316,8 @@ class Block(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, x, context, H, W):
-        x = x + self.drop_path(self.attn(self.norm1(x), self.norm_cross1(context), H, W))
+    def forward(self, x, H, W):
+        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
         x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
         return x
 
@@ -439,7 +367,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm1 = norm_layer(embed_dims[0])
-        self.norm_cross1 = norm_layer(embed_dims[0])
         
         #----------------------------------#
         #   block2
@@ -469,7 +396,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm2 = norm_layer(embed_dims[1])
-        self.norm_cross2 = norm_layer(embed_dims[1])
 
         #----------------------------------#
         #   block3
@@ -499,7 +425,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm3 = norm_layer(embed_dims[2])
-        self.norm_cross3 = norm_layer(embed_dims[2])
 
         #----------------------------------#
         #   block4
@@ -529,7 +454,6 @@ class MixVisionTransformer(nn.Module):
             ]
         )
         self.norm4 = norm_layer(embed_dims[3])
-        self.norm_cross4 = norm_layer(embed_dims[3])
 
         self.apply(self._init_weights)
 
@@ -548,7 +472,7 @@ class MixVisionTransformer(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
                 
-    def forward(self, x, context):
+    def forward(self, x):
         B = x.shape[0]
         outs = []
 
@@ -556,56 +480,40 @@ class MixVisionTransformer(nn.Module):
         #   block1
         #----------------------------------#
         x, H, W = self.patch_embed1.forward(x)
-        context, H_cross, W_cross = self.patch_embed1.forward(context)
         for i, blk in enumerate(self.block1):
-            x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = blk.forward(x, H, W)
         x = self.norm1(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross1(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block2
         #----------------------------------#
         x, H, W = self.patch_embed2.forward(x)
-        context, H_cross, W_cross = self.patch_embed2.forward(context)
         for i, blk in enumerate(self.block2):
-            x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = blk.forward(x, H, W)
         x = self.norm2(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross2(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block3
         #----------------------------------#
         x, H, W = self.patch_embed3.forward(x)
-        context, H_cross, W_cross = self.patch_embed3.forward(context)
         for i, blk in enumerate(self.block3):
-            x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = blk.forward(x, H, W)
         x = self.norm3(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross3(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         #----------------------------------#
         #   block4
         #----------------------------------#
         x, H, W = self.patch_embed4.forward(x)
-        context, H_cross, W_cross = self.patch_embed4.forward(context)
         for i, blk in enumerate(self.block4):
-            x = blk.forward(x, x, H, W)
-            x = x + blk.forward(x, context, H, W)
+            x = blk.forward(x, H, W)
         x = self.norm4(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
-        context = self.norm_cross4(context)
-        context = context.reshape(B, H_cross, W_cross, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         return outs
@@ -656,16 +564,25 @@ class SegFormerHead(nn.Module):
             k=1,
         )
 
+        self.resize_module1 = ConvModule(head_embed_dim, head_embed_dim, k=3, s=2, p=1, g=1, act=True)
+        self.resize_module2 = ConvModule(head_embed_dim, head_embed_dim, k=3, s=1, p=1, g=1, act=True)
+        self.skff = SKFF(in_channels=head_embed_dim, height=2)
+
         self.linear_pred    = nn.Conv2d(head_embed_dim, num_classes, kernel_size=1)
         self.dropout        = nn.Dropout2d(dropout_ratio)
     
-    def forward(self, inputs):
+    def forward(self, inputs, vq_feas):
         c1, c2, c3, c4 = inputs
 
         ############## MLP decoder on C1-C4 ###########
         n, _, h, w = c4.shape
         
         _c4 = self.linear_c4(c4).permute(0,2,1).reshape(n, -1, c4.shape[2], c4.shape[3])
+
+        vq_feas = self.resize_module1(vq_feas)
+        vq_feas = self.resize_module2(vq_feas)
+        _c4 = _c4 + self.skff([_c4, vq_feas])
+
         _c4 = F.interpolate(_c4, size=c1.size()[2:], mode='bilinear', align_corners=False)
 
         _c3 = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
@@ -683,7 +600,7 @@ class SegFormerHead(nn.Module):
 
         return x
 
-class CrossSegFormer(nn.Module):
+class SegFormer(nn.Module):
     def __init__(self,
                  num_classes,
                  pretrained_path,
@@ -714,47 +631,84 @@ class CrossSegFormer(nn.Module):
         if pretrained_path:
             print("Load backbone weights")
             state_dict = torch.load(pretrained_path)
-            if in_channels != 3:
-                new_state_dict = {}
-                for key, value in state_dict.items():
-                    if "patch_embed1.proj.weight" in key:
-                        O, I, H, W = value.shape
-                        new_value = torch.zeros(size=(O, in_channels, H, W))
-                        new_value[:, :I, :, :] = value
-                        new_state_dict[key] = new_value
-                        continue
-                    new_state_dict[key] = value
-                self.backbone.load_state_dict(state_dict=new_state_dict, strict=False)
-            else:
-                self.backbone.load_state_dict(state_dict=state_dict, strict=False)
+            self.backbone.load_state_dict(state_dict=state_dict, strict=False)
 
         self.decode_head = SegFormerHead(num_classes=num_classes,
                                          in_channels=embed_dims,
                                          head_embed_dim=head_embed_dim)
 
-    def forward(self, inputs, context):
+    def forward(self, inputs, vq_feas):
         H, W = inputs.size(2), inputs.size(3)
         
-        x = self.backbone.forward(inputs, context)
-        x = self.decode_head.forward(x)
+        x = self.backbone.forward(inputs)
+        x = self.decode_head.forward(x, vq_feas)
         
         x = F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True)
         return x
 
+class SKFF(nn.Module):
+
+    def __init__(self, in_channels, height=3, reduction=8, bias=False):
+        super(SKFF, self).__init__()
+        
+        self.height = height
+        d = max(int(in_channels / reduction), 4)
+        
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv_du = nn.Sequential(nn.Conv2d(in_channels, d, 1, padding=0, bias=bias), nn.LeakyReLU(0.2))
+
+        self.fcs = nn.ModuleList([])
+        for i in range(self.height):
+            self.fcs.append(nn.Conv2d(d, in_channels, kernel_size=1, stride=1,bias=bias))
+        
+        self.softmax = nn.Softmax(dim=1)
+
+        self.weight_vale = torch.zeros(size=(1, height, 1, 1, 1))
+        self.weight_vale[0, :] = 1
+        self.weight = torch.nn.Parameter(self.weight_vale, requires_grad=True)
+
+
+    def forward(self, inp_feats):
+        batch_size = inp_feats[0].shape[0]
+        n_feats =  inp_feats[0].shape[1]
+        
+
+        inp_feats = torch.cat(inp_feats, dim=1)
+        inp_feats = inp_feats.view(batch_size, self.height, n_feats, inp_feats.shape[2], inp_feats.shape[3])
+        
+        feats_U = torch.sum(inp_feats, dim=1)
+        feats_S = self.avg_pool(feats_U)
+        feats_Z = self.conv_du(feats_S)
+
+        attention_vectors = [fc(feats_Z) for fc in self.fcs]
+        attention_vectors = torch.cat(attention_vectors, dim=1)
+        attention_vectors = attention_vectors.view(batch_size, self.height, n_feats, 1, 1)
+        # self.weight = self.weight.view(1, self.height, n_feats, 1, 1)
+
+        attention_vectors = self.weight * attention_vectors
+
+        # stx()
+        attention_vectors = self.softmax(attention_vectors)
+        
+        feats_V = torch.sum(inp_feats * attention_vectors, dim=1)
+        
+        return feats_V   
+
 if __name__ == '__main__':
 
-    model = CrossSegFormer(num_classes=3,
-                           pretrained_path='/home/lib/generate_seg/model/weight/segformer_b0_backbone_weights.pth',
-                           in_channels=3,
-                           embed_dims=[32, 64, 160, 256],
-                           num_heads=[1, 2, 5, 8],
-                           mlp_ratios=[4, 4, 4, 4],
-                           qkv_bias=True,
-                           depths=[2, 2, 2, 2],
-                           sr_ratios=[8, 4, 2, 1],
-                           drop_rate=0.0,
-                           drop_path_rate=0.1,
-                           head_embed_dim=256)
+    model = SegFormer(num_classes=3,
+                    pretrained_path=None,
+                    in_channels=3,
+                    embed_dims=[32, 64, 160, 256],
+                    num_heads=[1, 2, 5, 8],
+                    mlp_ratios=[4, 4, 4, 4],
+                    qkv_bias=True,
+                    depths=[2, 2, 2, 2],
+                    sr_ratios=[8, 4, 2, 1],
+                    drop_rate=0.0,
+                    drop_path_rate=0.1,
+                    head_embed_dim=256)
     input_tensor = torch.rand(size=(1, 3, 512, 512))
-    output_tensor = model(input_tensor, input_tensor)
+    input_vq_tensor = torch.rand(size=(1, 256, 32, 32))
+    output_tensor = model(input_tensor, input_vq_tensor)
     print(output_tensor.shape)

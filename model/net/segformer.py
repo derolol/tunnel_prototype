@@ -622,7 +622,19 @@ class SegFormer(nn.Module):
         if pretrained_path:
             print("Load backbone weights")
             state_dict = torch.load(pretrained_path)
-            self.backbone.load_state_dict(state_dict=state_dict, strict=False)
+            if in_channels != 3:
+                new_state_dict = {}
+                for key, value in state_dict.items():
+                    if "patch_embed1.proj.weight" in key:
+                        O, I, H, W = value.shape
+                        new_value = torch.zeros(size=(O, in_channels, H, W))
+                        new_value[:, :I, :, :] = value
+                        new_state_dict[key] = new_value
+                        continue
+                    new_state_dict[key] = value
+                self.backbone.load_state_dict(state_dict=new_state_dict, strict=False)
+            else:
+                self.backbone.load_state_dict(state_dict=state_dict, strict=False)
 
         self.decode_head = SegFormerHead(num_classes=num_classes,
                                          in_channels=embed_dims,
@@ -639,7 +651,21 @@ class SegFormer(nn.Module):
 
 if __name__ == '__main__':
 
-    model = SegFormer()
-    input_tensor = torch.rand(size=(1, 3, 512, 512))
-    output_tensor = model(input_tensor)
-    print(output_tensor.shape)
+    model = SegFormer(num_classes=3,
+                    pretrained_path='/home/lib/generate_seg/model/weight/segformer_b0_backbone_weights.pth',
+                    in_channels=3,
+                    embed_dims=[32, 64, 160, 256],
+                    num_heads=[1, 2, 5, 8],
+                    mlp_ratios=[4, 4, 4, 4],
+                    qkv_bias=True,
+                    depths=[2, 2, 2, 2],
+                    sr_ratios=[8, 4, 2, 1],
+                    drop_rate=0.0,
+                    drop_path_rate=0.1,
+                    head_embed_dim=256)
+    # input_tensor = torch.rand(size=(1, 3, 512, 512))
+    # output_tensor = model(input_tensor)
+    # print(output_tensor.shape)
+
+    cur_dir = os.path.dirname(__file__)
+    torch.save(model, os.path.join(cur_dir, "segformer.ckpt"))

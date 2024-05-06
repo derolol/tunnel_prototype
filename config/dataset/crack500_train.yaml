@@ -1,0 +1,16 @@
+dataset:
+  target: dataset.crack500.Crack500Dataset
+  params:
+    file_list: /home/datasets/crack500/val.txt
+    image_root: /home/datasets/crack500/images/validation
+    annotation_root: /home/datasets/crack500/annotations/validation
+    image_format: jpg
+    annotation_format: png
+    out_size: 512
+    apply_transform: true
+
+data_loader:
+  batch_size: 16
+  shuffle: true
+  num_workers: 16
+  drop_last: true
