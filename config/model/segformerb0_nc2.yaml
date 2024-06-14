@@ -1,7 +1,7 @@
 target: model.net.segformer.SegFormer
 params:
   num_classes: 2
-  pretrained_path: model/weight/segformer_b0_backbone_weights.pth
+  pretrained_path:
   in_channels: 3
   embed_dims: [32, 64, 160, 256]
   num_heads: [1, 2, 5, 8]

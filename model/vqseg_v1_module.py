@@ -12,7 +12,7 @@ from pytorch_lightning import LightningModule
 
 from model.loss.focal_loss import FocalLoss
 from model.metric.seg_metric import SegAccuracyMetric, SegFBetaScoreMetric, SegPrecisionMetric, SegRecallMetric, SegIoUMetric
-from model.net.vqseg import VQSeg
+from model.net.vqseg_v1 import VQSeg
 
 class ModelModule(LightningModule):
 
@@ -34,7 +34,18 @@ class ModelModule(LightningModule):
         self.beta1 = 0.5
         self.beta2 = 0.9
 
-        self.vqseg = VQSeg(num_classes=num_classes)
+        self.vqseg = VQSeg(num_classes=num_classes,
+                           in_channels=3,
+                           embed_dims=[32, 128, 256, 512],
+                           num_heads=[1, 4, 8, 16],
+                           mlp_ratios=[4, 4, 4, 4],
+                           qkv_bias=True,
+                           depths=[2, 2, 2, 2],
+                           sr_ratios=[8, 4, 2, 1],
+                           drop_rate=0.,
+                           latent_dim=512,
+                           num_vectors=1024,
+                           beta=0.5)
         
         self.configure_losses()
         self.configure_metics()

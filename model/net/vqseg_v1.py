@@ -10,24 +10,21 @@ from functools import partial
 
 import torch
 import torch.nn.functional as F
-from torch.nn import Module, Conv2d, AdaptiveAvgPool2d, Linear, Identity, Sequential, ModuleList
-from torch.nn import BatchNorm2d, LayerNorm, GroupNorm
-from torch.nn import Softmax, LeakyReLU, GELU, Dropout
-from torch.nn import Embedding
+import torch.nn as nn
 from torch.nn.init import trunc_normal_, constant_
 
 def _init_weights(m):
 
-    if isinstance(m, Linear):
+    if isinstance(m, nn.Linear):
         trunc_normal_(m.weight, std=.02)
-        if isinstance(m, Linear) and m.bias is not None:
+        if isinstance(m, nn.Linear) and m.bias is not None:
             constant_(m.bias, 0)
 
-    elif isinstance(m, LayerNorm):
+    elif isinstance(m, nn.LayerNorm):
         constant_(m.bias, 0)
         constant_(m.weight, 1.0)
     
-    elif isinstance(m, Conv2d):
+    elif isinstance(m, nn.Conv2d):
         fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
         fan_out //= m.groups
         m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
@@ -54,7 +51,7 @@ def drop_path(x,
 
     return x * random_tensor
 
-class DropPath(Module):
+class DropPath(nn.Module):
 
     def __init__(self,
                  drop_prob=None,
@@ -71,7 +68,7 @@ class DropPath(Module):
                          self.training,
                          self.scale_by_keep)
 
-class ConvModule(Module):
+class ConvModule(nn.Module):
 
     def __init__(self,
                  in_channels,
@@ -79,47 +76,49 @@ class ConvModule(Module):
                  kernel_size=1,
                  stride=1,
                  padding=0,
-                 groups=1):
+                 groups=1,
+                 bias=False):
         
         super().__init__()
         
-        self.conv = Conv2d(in_channels=in_channels,
+        self.conv = nn.Conv2d(in_channels=in_channels,
                            out_channels=out_channels,
                            kernel_size=kernel_size,
                            stride=stride,
                            padding=padding,
                            groups=groups,
-                           bias=False)
-        self.norm = GroupNorm(num_groups=1,
+                           bias=bias)
+        self.norm = nn.GroupNorm(num_groups=1,
                               num_channels=out_channels)
-        self.act = GELU()
+        self.act = nn.GELU()
 
     def forward(self, x):
 
         return self.act(self.norm(self.conv(x)))
 
-class OverlapPatchEmbed(Module):
+class OverlapPatchEmbed(nn.Module):
     '''
-    Overlap Patch Embedding
+    Overlap Patch nn.Embedding
     '''
     
     def __init__(self,
-                 in_channels,
+                 in_channel,
+                 embed_dim,
                  patch_size,
                  stride,
-                 embed_dim):
+                 ):
     
         super().__init__()
     
         padding = patch_size // 2
 
-        self.proj = Conv2d(in_channels=in_channels,
+        self.proj = nn.Conv2d(in_channels=in_channel,
                            out_channels=embed_dim,
                            kernel_size=patch_size,
                            stride=stride,
                            padding=padding)
         
-        self.norm = LayerNorm(normalized_shape=embed_dim)
+        self.norm = nn.LayerNorm(normalized_shape=embed_dim)
 
         self.apply(_init_weights)
 
@@ -137,7 +136,7 @@ class OverlapPatchEmbed(Module):
 
         # return x, H, W
 
-class Attention(Module):
+class Attention(nn.Module):
     '''
     '''
     
@@ -159,22 +158,22 @@ class Attention(Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        self.q = Linear(in_features=dim,
+        self.q = nn.Linear(in_features=dim,
                         out_features=dim,
                         bias=qkv_bias)
         
         # Smaller Key & Value
         self.sr_ratio = sr_ratio
         if sr_ratio > 1:
-            self.sr     = Conv2d(in_channels=dim, out_channels=dim,
+            self.sr     = nn.Conv2d(in_channels=dim, out_channels=dim,
                                  kernel_size=sr_ratio, stride=sr_ratio)
-            self.norm   = LayerNorm(normalized_shape=dim)
-        self.kv = Linear(dim, dim * 2, bias=qkv_bias)
+            self.norm   = nn.LayerNorm(normalized_shape=dim)
+        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
         
-        self.attn_drop  = Dropout(attn_drop)
+        self.attn_drop  = nn.Dropout(attn_drop)
         
-        self.proj       = Linear(dim, dim)
-        self.proj_drop  = Dropout(proj_drop)
+        self.proj       = nn.Linear(dim, dim)
+        self.proj_drop  = nn.Dropout(proj_drop)
 
         self.apply(_init_weights)
 
@@ -223,13 +222,13 @@ class Attention(Module):
 
         return x
 
-class DepthwiseConv(Module):
+class DepthwiseConv(nn.Module):
 
     def __init__(self, dim):
 
         super().__init__()
         
-        self.dwconv = Conv2d(in_channels=dim,
+        self.dwconv = nn.Conv2d(in_channels=dim,
                              out_channels=dim,
                              kernel_size=3,
                              stride=1,
@@ -245,13 +244,13 @@ class DepthwiseConv(Module):
 
         return x
     
-class MLP(Module):
+class MLP(nn.Module):
 
     def __init__(self,
                  in_features,
                  hidden_features=None,
                  out_features=None,
-                 act_layer=GELU,
+                 act_layer=nn.GELU,
                  drop=0.):
         
         super().__init__()
@@ -259,14 +258,14 @@ class MLP(Module):
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         
-        self.fc1 = Linear(in_features=in_features,
+        self.fc1 = nn.Linear(in_features=in_features,
                           out_features=hidden_features)
         self.dwconv = DepthwiseConv(dim=hidden_features)
         self.act = act_layer()
         
-        self.fc2 = Linear(in_features=hidden_features,
+        self.fc2 = nn.Linear(in_features=hidden_features,
                           out_features=out_features)
-        self.drop = Dropout(drop)
+        self.drop = nn.Dropout(drop)
 
         self.apply(_init_weights)
 
@@ -282,7 +281,7 @@ class MLP(Module):
         
         return x
 
-class AttentionBlock(Module):
+class AttentionBlock(nn.Module):
 
     def __init__(self,
                  dim,
@@ -293,8 +292,8 @@ class AttentionBlock(Module):
                  drop=0.,
                  attn_drop=0.,
                  drop_path=0.,
-                 act_layer=GELU,
-                 norm_layer=LayerNorm,
+                 act_layer=nn.GELU,
+                 norm_layer=nn.LayerNorm,
                  sr_ratio=1):
         
         super().__init__()
@@ -315,7 +314,7 @@ class AttentionBlock(Module):
                        act_layer=act_layer,
                        drop=drop)
 
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.norm3 = norm_layer(dim)
 
@@ -337,7 +336,7 @@ class AttentionBlock(Module):
         
         return x
 
-class SKFF(Module):
+class SKFF(nn.Module):
 
     def __init__(self, in_channels, height=3, reduction=8, bias=False):
         
@@ -346,16 +345,16 @@ class SKFF(Module):
         self.height = height
         d = max(int(in_channels / reduction), 4)
         
-        self.avg_pool = AdaptiveAvgPool2d(1)
-        self.conv_du = Sequential(
-            Conv2d(in_channels, d, 1, padding=0, bias=bias),
-            LeakyReLU(0.2))
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv_du = nn.Sequential(
+            nn.Conv2d(in_channels, d, 1, padding=0, bias=bias),
+            nn.LeakyReLU(0.2))
 
-        self.fcs = ModuleList([])
+        self.fcs = nn.ModuleList([])
         for i in range(self.height):
-            self.fcs.append(Conv2d(d, in_channels, kernel_size=1, stride=1,bias=bias))
+            self.fcs.append(nn.Conv2d(d, in_channels, kernel_size=1, stride=1,bias=bias))
         
-        self.softmax = Softmax(dim=1)
+        self.softmax = nn.Softmax(dim=1)
 
         self.weight_vale = torch.zeros(size=(1, height, 1, 1, 1))
         self.weight_vale[0, :] = 1
@@ -387,7 +386,38 @@ class SKFF(Module):
         
         return feats_V   
 
-class SegEncoder(Module):
+class SoftMaxPool(nn.Module):
+
+    def __init__(self, dim) -> None:
+
+        super().__init__()
+
+        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0,
+                                     return_indices=True)
+        self.max_unpool = nn.MaxUnpool2d(kernel_size=2, stride=2, padding=0)
+
+        self.soft_indice = ConvModule(in_channels=dim, out_channels=dim,
+                                      kernel_size=3, stride=2, padding=1)
+        
+        self.conv_down = ConvModule(in_channels=dim, out_channels=dim,
+                                    kernel_size=3, stride=2, padding=1)
+    
+    def forward(self, x):
+
+        # soft max down
+        x_max, x_indices = self.max_pool(x)
+        
+        ones = torch.ones_like(x_indices).to(x)
+        ones = self.max_unpool(ones, x_indices)
+        x_soft_max = x * ones + x
+        x_soft_max = self.soft_indice(x_soft_max)
+
+        # conv down
+        x = x_soft_max + self.conv_down(x)
+
+        return x
+
+class SegEncoder(nn.Module):
 
     def __init__(self,
                  in_channels=3,
@@ -395,32 +425,45 @@ class SegEncoder(Module):
                  depths=[3, 4, 6, 3],           # AttentionBlock num
                  drop_path_rate=0.,             # AttentionBlock drop path rate
                  num_heads=[1, 2, 4, 8],        # Attention head number
-                 qkv_bias=False,                # Attention Linear bias
+                 qkv_bias=False,                # Attention nn.Linear bias
                  sr_ratios=[8, 4, 2, 1],        # Attention K, V size ratio
                  qk_scale=None,                 # Attention value scale
                  attn_drop_rate=0.,             # Attention Q, K dropout
                  drop_rate=0.,                  # Attention + MLP last dropout
                  mlp_ratios=[4, 4, 4, 4],       # MLP hidden dim ratio
-                 norm_layer=LayerNorm,          # Attention + MLP norm type
+                 norm_layer=nn.LayerNorm,          # Attention + MLP norm type
                  latent_dim=512,                # Latent dim
                  ):
         
         super().__init__()
 
-        self.blocks = ModuleList()
+        # down sample 1/4
+        self.down1 = ConvModule(in_channels=in_channels,
+                                out_channels=embed_dims[0],
+                                kernel_size=3, stride=2, padding=1,
+                                bias=False)
+        self.down2 = ConvModule(in_channels=embed_dims[0],
+                                out_channels=embed_dims[0],
+                                kernel_size=3, stride=2, padding=1,
+                                bias=False)
+
+        # seg blocks
+        self.blocks = nn.ModuleList([])
         
         drop_path_rate_list = [
             x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
 
-        input_channel = in_channels
+        input_channel = embed_dims[0]
 
         for i in range(len(embed_dims)):
 
             output_channel = embed_dims[i]
 
-            path_embed = OverlapPatchEmbed(in_channels=input_channel,
+            # get patch embeding
+            path_embed = OverlapPatchEmbed(in_channel=input_channel,
                                            embed_dim=output_channel,
-                                           patch_size=3, stride=2)
+                                           patch_size=7, stride=1)
+            # update input channel
             input_channel = output_channel
             
             layers = [
@@ -435,10 +478,14 @@ class SegEncoder(Module):
                                drop=drop_rate,
                                norm_layer=norm_layer)
                 for d in range(depths[i])]
+
+            # down sample 1/2
+            pool = SoftMaxPool(dim=output_channel)
             
-            self.blocks.append(Sequential(path_embed, *layers))
+            self.blocks.append(nn.Sequential(path_embed, *layers, pool))
         
-        self.encode_latent = Conv2d(in_channels=embed_dims[-1],
+        # feature quant
+        self.encode_latent = nn.Conv2d(in_channels=embed_dims[-1],
                                     out_channels=latent_dim,
                                     stride=3,
                                     kernel_size=1,
@@ -447,6 +494,8 @@ class SegEncoder(Module):
         self.apply(_init_weights)
 
     def forward(self, x):
+
+        x = self.down2(self.down1(x))
 
         feature_maps = []
 
@@ -459,7 +508,7 @@ class SegEncoder(Module):
 
         return feature_maps
 
-class Codebook(Module):
+class Codebook(nn.Module):
 
     def __init__(self, num_vectors, latent_dim, beta):
 
@@ -469,7 +518,7 @@ class Codebook(Module):
         self.latent_dim = latent_dim
         self.beta = beta
 
-        self.embedding = Embedding(self.num_vectors, self.latent_dim)
+        self.embedding = nn.Embedding(self.num_vectors, self.latent_dim)
         self.embedding.weight.data.uniform_(-1.0 / self.num_vectors, 1.0 / self.num_vectors)
 
     def forward(self, x):
@@ -494,169 +543,57 @@ class Codebook(Module):
 
         return x_q, min_encoding_indices, loss
 
-class FuseBlock(Module):
+class SegDecoder(nn.Module):
 
     def __init__(self,
-                 in_channels,
-                 out_channels,
-                 num_heads,
-                 sr_ratio,
-                 qk_scale,
-                 mlp_ratio,
-                 norm_layer) -> None:
-
-        super().__init__()
-
-        # [start] 20240506 edit----------------------------------------
-        
-        # self.up_block = ConvModule(in_channels=in_channels,
-        #                            out_channels=out_channels,
-        #                            kernel_size=3,
-        #                            stride=1,
-        #                            padding=1)
-        
-
-        self.up_block = Sequential(*[
-            ConvModule(in_channels=in_channels,
-                       out_channels=out_channels,
-                       kernel_size=3,
-                       stride=1,
-                       padding=1),
-            # AttentionBlock(dim=out_channels,
-            #                num_heads=num_heads,
-            #                sr_ratio=sr_ratio,
-            #                qk_scale=qk_scale,
-            #                mlp_ratio=mlp_ratio,
-            #                norm_layer=norm_layer)
-        ])
-        
-        # [end] 20240506 edit----------------------------------------
-        
-        # [start] 20240506 edit----------------------------------------
-
-        # self.seg_block = ConvModule(in_channels=out_channels,
-        #                             out_channels=out_channels,
-        #                             kernel_size=3,
-        #                             stride=1,
-        #                             padding=1)
-        
-        self.seg_block = Sequential(*[
-            ConvModule(in_channels=out_channels,
-                       out_channels=out_channels,
-                       kernel_size=3,
-                       stride=1,
-                       padding=1),
-            # AttentionBlock(dim=out_channels,
-            #                num_heads=num_heads,
-            #                sr_ratio=sr_ratio,
-            #                qk_scale=qk_scale,
-            #                mlp_ratio=mlp_ratio,
-            #                norm_layer=norm_layer)
-        ])
-        
-        # self.fuse = ConvModule(in_channels=(out_channels * 2),
-        #                        out_channels=out_channels)
-    
-        self.fuse = SKFF(in_channels=out_channels, height=2)
-            
-        # [end] 20240506 edit----------------------------------------
-    
-    def forward(self, x, concat_x):
-
-        x = self.up_block(x)
-        x = F.interpolate(x, size=(concat_x.shape[2:]), mode='bilinear')
-
-        concat_x = concat_x + self.seg_block(concat_x)
-
-        x = x + self.fuse([x, concat_x])
-
-        return x
-
-class SegDecoder(Module):
-
-    def __init__(self,
-                 embed_dims=[32, 64, 160, 256], # AttentionBlock dim
-                 depths=[3, 4, 6, 3],           # AttentionBlock num
-                 drop_path_rate=0.,             # AttentionBlock drop path rate
-                 num_heads=[1, 2, 4, 8],        # Attention head number
-                 qkv_bias=False,                # Attention Linear bias
-                 sr_ratios=[8, 4, 2, 1],        # Attention K, V size ratio
-                 qk_scale=None,                 # Attention value scale
-                 attn_drop_rate=0.,             # Attention Q, K dropout
-                 drop_rate=0.,                  # Attention + MLP last dropout
-                 mlp_ratios=[4, 4, 4, 4],       # MLP hidden dim ratio
-                 norm_layer=LayerNorm,          # Attention + MLP norm type
-                 num_classes=2,                 # Seg class num
-                 latent_dim=512,                # Latent dim num
+                 embed_dims=[],     # Latent dim num
+                 linear_dim=256,    # Latent dim num
+                 num_classes=2,     # Seg class num
                  ):
         
         super().__init__()
 
-        embed_dims.reverse()
-        sr_ratios.reverse()
-        num_heads.reverse()
-        depths.reverse()
-        mlp_ratios.reverse()
+        self.linear_list = nn.ModuleList([])
 
-        self.fuse_blocks = ModuleList()
-        self.blocks = ModuleList()
+        for dim in embed_dims:
+
+            linear = nn.Linear(in_features=dim, out_features=linear_dim)
+            self.linear_list.append(linear)
         
-        drop_path_rate_list = [
-            x.item() for x in torch.linspace(drop_path_rate, 0, sum(depths))]
-
-        input_channel = latent_dim
-
-        for i in range(len(embed_dims)):
-
-            output_channel = embed_dims[i]
-
-            self.fuse_blocks.append(
-                FuseBlock(in_channels=input_channel,
-                          out_channels=output_channel,
-                          num_heads=num_heads[i],
-                          sr_ratio=sr_ratios[i],
-                          qk_scale=qk_scale,
-                          mlp_ratio=mlp_ratios[i],
-                          norm_layer=norm_layer))
-            
-            input_channel = output_channel
-
-            layers = [
-                AttentionBlock(dim=output_channel,
-                               drop_path=drop_path_rate_list[i + d], 
-                               num_heads=num_heads[i],
-                               qkv_bias=qkv_bias,
-                               sr_ratio=sr_ratios[i],
-                               qk_scale=qk_scale,
-                               attn_drop=attn_drop_rate,
-                               mlp_ratio=mlp_ratios[i],
-                               drop=drop_rate,
-                               norm_layer=norm_layer)
-                for d in range(depths[i])]
-            
-            self.blocks.append(Sequential(*layers))
+        self.concat = ConvModule(in_channels=(linear_dim * len(embed_dims)),
+                                 out_channels=linear_dim,
+                                 kernel_size=3,
+                                 stride=1,
+                                 padding=1)
         
-        self.pred = Conv2d(in_channels=embed_dims[-1],
-                           out_channels=num_classes,
-                           stride=1,
-                           kernel_size=1,
-                           padding=0)
+        self.seg = ConvModule(in_channels=linear_dim,
+                              out_channels=num_classes)
         
         self.apply(_init_weights)
 
-    def forward(self, x, feature_maps):
+    def forward(self, x):
 
-        feature_maps.reverse()
+        self.output_size = x[0].shape[2:]
 
-        for i in range(len(self.blocks)):
-            x = self.fuse_blocks[i](x, feature_maps[i + 1])
-            x = self.blocks[i](x)
+        for index in range(len(x)):
 
-        pred = self.pred(x)
+            linear = self.linear_list[index]
+            fea = x[index]
+
+            B, C, H, W = fea.shape
+            fea = rearrange(fea, 'b c h w -> b (h w) c')
+            fea = linear(fea)
+            fea = rearrange(fea, 'b (h w) c -> b c h w', h=H, w=W)
+
+            x[index] = F.interpolate(fea, size=self.output_size, mode='bilinear')
+
+        x = self.concat(torch.concat(x, dim=1))
+
+        pred = self.seg(x)
 
         return pred
 
-class VQSeg(Module):
+class VQSeg(nn.Module):
 
     def __init__(self,
                  num_classes=2,
@@ -683,77 +620,39 @@ class VQSeg(Module):
                                   drop_rate=drop_rate,
                                   mlp_ratios=mlp_ratios,
                                   latent_dim=latent_dim)
-        self.quant_conv = Conv2d(in_channels=latent_dim,
+        self.quant_conv = nn.Conv2d(in_channels=latent_dim,
                                  out_channels=latent_dim,
                                  kernel_size=1)
         self.codebook = Codebook(num_vectors=num_vectors,
                                  latent_dim=latent_dim,
                                  beta=beta)
         
-        self.post_quant_conv = Conv2d(in_channels=latent_dim,
+        self.post_quant_conv = nn.Conv2d(in_channels=latent_dim,
                                       out_channels=latent_dim,
                                       kernel_size=1)
         
-        self.decoder = SegDecoder(embed_dims=embed_dims,
-                                  depths=depths,
-                                  num_heads=num_heads,
-                                  qkv_bias=qkv_bias,
-                                  sr_ratios=sr_ratios,
-                                  drop_rate=drop_rate,
-                                  mlp_ratios=[1, 1, 1, 1],
-                                  num_classes=num_classes,
-                                  latent_dim=latent_dim)
+        self.decoder = SegDecoder(embed_dims=(embed_dims + [latent_dim]),
+                                  linear_dim=256,
+                                  num_classes=num_classes)
 
         self.apply(_init_weights)
 
     def forward(self, x):
 
-        feature_maps = self.encoder(x)
-        x = self.quant_conv(feature_maps[-1])
-        x, x_indices, quant_loss = self.codebook(x)
+        output_size = x.shape[2:]
 
-        x = self.post_quant_conv(x)
-        x = self.decoder(x, feature_maps)
-
-        x = F.interpolate(x, scale_factor=2.0, mode='bilinear')
-
-        return x, x_indices, quant_loss
-
-    def encode(self, x):
+        x = self.encoder(x)
         
-        feature_maps = self.encoder(x)
-        x = self.quant_conv(feature_maps[-1])
-        x, x_indices, quant_loss = self.codebook(x)
+        x_quant = self.quant_conv(x[-1])
+        x_quant, x_indices, quant_loss = self.codebook(x_quant)
+        x_quant = self.post_quant_conv(x_quant)
+        x[-1] = x_quant
 
-        return x, x_indices, quant_loss
-
-    def decode(self, x):
-
-        x = self.post_quant_conv(x)
         x = self.decoder(x)
 
-        return x
+        x = F.interpolate(x, size=output_size, mode='bilinear')
 
-    def calculate_lambda(self, perceptual_loss, gan_loss):
-
-        last_layer = self.decoder.model[-1]
-        last_layer_weight = last_layer.weight
-        perceptual_loss_grads = torch.autograd.grad(perceptual_loss, last_layer_weight, retain_graph=True)[0]
-        gan_loss_grads = torch.autograd.grad(gan_loss, last_layer_weight, retain_graph=True)[0]
-
-        λ = torch.norm(perceptual_loss_grads) / (torch.norm(gan_loss_grads) + 1e-4)
-        λ = torch.clamp(λ, 0, 1e4).detach()
-
-        return 0.8 * λ
-
-    @staticmethod
-    def adopt_weight(disc_factor, i, threshold, value=0.):
-        if i < threshold:
-            disc_factor = value
-        return disc_factor
-
-    def load_checkpoint(self, path):
-        self.load_state_dict(torch.load(path))
+        return x, x_indices, quant_loss
 
 if __name__ == '__main__':
 
@@ -766,13 +665,13 @@ if __name__ == '__main__':
 PatchGAN Discriminator (https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/models/networks.py#L538)
 """
 
-class Discriminator(Module):
+class Discriminator(nn.Module):
 
     def __init__(self, image_channels=3, num_filters_last=64, n_layers=3):
 
         super().__init__()
 
-        layers = [Conv2d(image_channels, num_filters_last,
+        layers = [nn.Conv2d(image_channels, num_filters_last,
                             kernel_size=4, stride=2, padding=1), nn.LeakyReLU(0.2)]
         num_filters_mult = 1
 
@@ -780,19 +679,19 @@ class Discriminator(Module):
             num_filters_mult_last = num_filters_mult
             num_filters_mult = min(2 ** i, 8)
             layers += [
-                Conv2d(num_filters_last * num_filters_mult_last,
+                nn.Conv2d(num_filters_last * num_filters_mult_last,
                           num_filters_last * num_filters_mult,
                           kernel_size=4,
                           stride=2 if i < n_layers else 1,
                           padding=1,
                           bias=False),
-                BatchNorm2d(num_filters_last * num_filters_mult),
-                LeakyReLU(0.2, True)
+                nn.BatchNorm2d(num_filters_last * num_filters_mult),
+                nn.LeakyReLU(0.2, True)
             ]
 
-        layers.append(Conv2d(num_filters_last * num_filters_mult, 1,
+        layers.append(nn.Conv2d(num_filters_last * num_filters_mult, 1,
                                 kernel_size=4, stride=1, padding=1))
-        self.model = Sequential(*layers)
+        self.model = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.model(x)

@@ -30,35 +30,58 @@ class ImageLogger(Callback):
         self.max_images_each_step = max_images_each_step
         self.log_images_kwargs = log_images_kwargs or dict()
 
+    def setup(self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str) -> None:
+        
+        super().setup(trainer, pl_module, stage)
+    
+        # save dir
+        if len(trainer.loggers) > 0:
+            if trainer.loggers[0].save_dir is not None:
+                save_dir = trainer.loggers[0].save_dir
+            else:
+                save_dir = trainer.default_root_dir
+            name = trainer.loggers[0].name
+            version = trainer.loggers[0].version
+            version = version if isinstance(version, str) else f"version_{version}"
+            self.output_dir = os.path.join(save_dir, str(name), version, "images")
+        else:
+            self.output_dir = os.path.join(trainer.default_root_dir, str(name), version, "images")
+
+        os.makedirs(self.output_dir, exist_ok=True)
+
     @rank_zero_only
-    def on_val_batch_end(
+    def on_validation_batch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT,
         batch: Any, batch_idx: int
     ) -> None:
         
-        if pl_module.global_step % self.log_every_n_steps == 0:
-            is_train = pl_module.training
-            if is_train:
-                pl_module.freeze()
+        # if pl_module.global_step % self.log_every_n_steps == 0:
+        #     is_train = pl_module.training
+        #     if is_train:
+        #         pl_module.freeze()
+
+        if batch_idx != 0:
+            return
+
+        with torch.no_grad():
+            # returned images should be: nchw, rgb, [0, 1]
+            images: Dict[str, torch.Tensor] = pl_module.log_images(batch, outputs)
+        
+        # save images
+        for image_key in images:
             
-            with torch.no_grad():
-                # returned images should be: nchw, rgb, [0, 1]
-                images: Dict[str, torch.Tensor] = pl_module.log_images(batch, outputs)
+            image = images[image_key].detach().cpu()
+
+            grid = torchvision.utils.make_grid(image, nrow=4)
+            grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1).numpy()
+            grid = (grid * 255).clip(0, 255).astype(np.uint8)
             
-            # save images
-            save_dir = os.path.join(pl_module.logger.save_dir, pl_module.logger.name, "image_log", "train")
-            os.makedirs(save_dir, exist_ok=True)
-            for image_key in images:
-                image = images[image_key].detach().cpu()
-                grid = torchvision.utils.make_grid(image, nrow=4)
-                # chw -> hwc (hw if gray)
-                grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1).numpy()
-                grid = (grid * 255).clip(0, 255).astype(np.uint8)
-                filename = "step-{:06}_{}_e-{:06}_b-{:06}.png".format(
-                    pl_module.global_step, image_key, pl_module.current_epoch, batch_idx
-                )
-                path = os.path.join(save_dir, filename)
-                Image.fromarray(grid).save(path)
+            filename = "step-{:06}_{}_e-{:06}_b-{:06}.png".format(
+                pl_module.global_step, image_key, pl_module.current_epoch, batch_idx
+            )
+            path = os.path.join(self.output_dir, filename)
             
-            if is_train:
-                pl_module.unfreeze()
+            Image.fromarray(grid).save(path)
+        
+        # if is_train:
+        #     pl_module.unfreeze()

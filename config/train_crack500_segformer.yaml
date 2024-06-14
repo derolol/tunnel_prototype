@@ -12,7 +12,7 @@ model:
   params:
     model_config: config/model/segformerb0_nc2.yaml
     resume:
-    learning_rate: 1e-3
+    learning_rate: 5e-4
     num_classes: 2
     type_classes: ["background", "crack"]
     color_map: [[0, 0, 0], [255, 0, 0]]
@@ -30,11 +30,11 @@ lightning:
     # Path to save logs and checkpoints.
     default_root_dir: output
     # Max number of training steps (batches).
-    max_steps: 10000
+    max_steps: 20000
     # Validation frequency in terms of training steps.
-    val_check_interval: 100
+    val_check_interval: 2000
     check_val_every_n_epoch:
-    log_every_n_steps: 100
+    log_every_n_steps: 2000
     # Accumulate gradients from multiple batches so as to increase batch size.
     accumulate_grad_batches: 1
   
@@ -55,7 +55,7 @@ lightning:
     - target: callback.image_logger.ImageLogger
       params:
         # Log frequency of image logger.
-        log_every_n_steps: 100
+        log_every_n_steps: 2000
         max_images_each_step: 4
         log_images_kwargs: ~
 
@@ -63,5 +63,7 @@ lightning:
       params:
         # Frequency of saving checkpoints.
         every_n_train_steps: 2000
-        save_top_k: 1
+        monitor: val/segment_iou_total
+        mode: max
+        save_top_k: 3
         filename: "{step}"

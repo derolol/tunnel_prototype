@@ -8,11 +8,11 @@ data:
     val_config: config/dataset/crack500_val.yaml
 
 model:
-  target: model.vqseg_module.ModelModule
+  target: model.vqseg_v3_module.ModelModule
   params:
     model_config:
     resume:
-    learning_rate: 2e-3 # 2.25e-05
+    learning_rate: 1e-3
     num_classes: 2
     type_classes: ["background", "crack"]
     color_map: [[0, 0, 0], [255, 0, 0]]
@@ -32,9 +32,9 @@ lightning:
     # Max number of training steps (batches).
     max_steps: 20000
     # Validation frequency in terms of training steps.
-    val_check_interval: 2000
+    val_check_interval: 500
     check_val_every_n_epoch:
-    log_every_n_steps: 2000
+    log_every_n_steps: 500
     # Accumulate gradients from multiple batches so as to increase batch size.
     accumulate_grad_batches: 1
   
@@ -42,13 +42,13 @@ lightning:
     target: logger.tensorboard_logger.TensorBoardLogger
     params:
       save_dir: train_crack500_viz
-      name: crack500_vqseg
+      name: crack500_vqseg_v3
   
   callbacks:
     - target: callback.image_logger.ImageLogger
       params:
         # Log frequency of image logger.
-        log_every_n_steps: 2000
+        log_every_n_steps: 500
         max_images_each_step: 4
         log_images_kwargs: ~
 
@@ -56,5 +56,7 @@ lightning:
       params:
         # Frequency of saving checkpoints.
         every_n_train_steps: 2000
-        save_top_k: 1
+        monitor: val/segment_iou_total
+        mode: max
+        save_top_k: 3
         filename: "{step}"

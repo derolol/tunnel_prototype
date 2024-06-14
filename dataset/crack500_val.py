@@ -74,14 +74,12 @@ class Crack500Dataset(data.Dataset):
                 image = transforms.F.center_crop(image, output_size=self.out_size)
                 annotation = transforms.F.center_crop(annotation, output_size=self.out_size)
             else:
-                image = transforms.F.center_crop(image, output_size=self.out_size)
-                annotation = transforms.F.center_crop(annotation, output_size=self.out_size)
-                # image = transforms.F.resize(image, 
-                #                             size=self.out_size,
-                #                             interpolation=transforms.InterpolationMode.BILINEAR)
-                # annotation = transforms.F.resize(annotation, 
-                #                                  size=self.out_size,
-                #                                  interpolation=transforms.InterpolationMode.NEAREST)
+                image = transforms.F.resize(image, 
+                                            size=self.out_size,
+                                            interpolation=transforms.InterpolationMode.BILINEAR)
+                annotation = transforms.F.resize(annotation, 
+                                                 size=self.out_size,
+                                                 interpolation=transforms.InterpolationMode.NEAREST)
 
         return image, annotation, image_name
 

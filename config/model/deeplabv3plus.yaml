@@ -1,0 +1,8 @@
+target: model.net.deeplabv3plus.DeepLabV3Plus
+params:
+  num_classes: 2
+  in_channels: 3
+  backbone: resnet
+  output_stride: 16
+  is_freeze_bn: False
+  is_freeze_backbone: False

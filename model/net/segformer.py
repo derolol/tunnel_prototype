@@ -651,6 +651,9 @@ class SegFormer(nn.Module):
 
 if __name__ == '__main__':
 
+    from thop import profile, clever_format
+
+
     model = SegFormer(num_classes=3,
                     pretrained_path='/home/lib/generate_seg/model/weight/segformer_b0_backbone_weights.pth',
                     in_channels=3,
@@ -663,9 +666,8 @@ if __name__ == '__main__':
                     drop_rate=0.0,
                     drop_path_rate=0.1,
                     head_embed_dim=256)
-    # input_tensor = torch.rand(size=(1, 3, 512, 512))
-    # output_tensor = model(input_tensor)
-    # print(output_tensor.shape)
-
-    cur_dir = os.path.dirname(__file__)
-    torch.save(model, os.path.join(cur_dir, "segformer.ckpt"))
+    
+    x = torch.randn(size=(1, 3, 512, 512))
+    flops, params = profile(model, inputs=(x,))
+    flops, params = clever_format([flops, params], '%.3f')
+    print(f'Params: {params} FLOPs: {flops}') # Params: 3.715M FLOPs: 6.773G

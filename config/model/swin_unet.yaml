@@ -1,0 +1,7 @@
+target: model.net.swin_unet.SwinUNet
+params:
+  in_channel: 3
+  image_size: 512
+  num_classes: 2
+  patch_size: 4
+  window_size: 8

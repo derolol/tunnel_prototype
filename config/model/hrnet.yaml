@@ -1,0 +1,3 @@
+target: model.net.hrnet.HRNet
+params:
+  num_classes: 2

@@ -8,14 +8,37 @@ data:
     val_config: config/dataset/crack500_val.yaml
 
 model:
-  target: model.vqseg_module.ModelModule
+  target: model.avqseg_module.ModelModule
   params:
-    model_config:
-    resume:
-    learning_rate: 2e-3 # 2.25e-05
+    learning_rate: 1e-3 # train
+    quant_loss_beta: 0.25
     num_classes: 2
     type_classes: ["background", "crack"]
     color_map: [[0, 0, 0], [255, 0, 0]]
+
+    in_channels: 3 # encoder
+    embed_dims: [32, 64, 128, 256]
+    depths: [2, 2, 2, 2]
+    num_heads: [1, 2, 4, 8]
+    mlp_ratios: [4, 4, 4, 4]
+    qkv_bias: True
+    sr_ratios: [8, 4, 2, 1]
+    drop_rate: 0.
+    pooling_module: 'soft'
+
+    decode_dim: 256 # decoder
+
+    is_feature_quant: True # vector quant
+    embedding_frozen: False
+    quant_fuse_module: 'channel'
+    quant_dim: 3
+    num_vectors: 1024
+    latent_dim: 256
+
+    is_seg_refine: False # refine seg
+    sample_size: 1
+    is_edge_weight: False
+    sample_beta: 0.75
 
 lightning:
   seed: 231
@@ -32,9 +55,9 @@ lightning:
     # Max number of training steps (batches).
     max_steps: 20000
     # Validation frequency in terms of training steps.
-    val_check_interval: 2000
+    val_check_interval: 500
     check_val_every_n_epoch:
-    log_every_n_steps: 2000
+    log_every_n_steps: 500
     # Accumulate gradients from multiple batches so as to increase batch size.
     accumulate_grad_batches: 1
   
@@ -42,13 +65,13 @@ lightning:
     target: logger.tensorboard_logger.TensorBoardLogger
     params:
       save_dir: train_crack500_viz
-      name: crack500_vqseg
+      name: crack500_avqseg_soft_quant
   
   callbacks:
     - target: callback.image_logger.ImageLogger
       params:
         # Log frequency of image logger.
-        log_every_n_steps: 2000
+        log_every_n_steps: 500
         max_images_each_step: 4
         log_images_kwargs: ~
 
@@ -56,5 +79,7 @@ lightning:
       params:
         # Frequency of saving checkpoints.
         every_n_train_steps: 2000
-        save_top_k: 1
+        monitor: val/segment_iou_total
+        mode: max
+        save_top_k: 3
         filename: "{step}"

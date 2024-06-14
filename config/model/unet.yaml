@@ -1,0 +1,5 @@
+target: model.net.unet.UNet
+params:
+  n_channels: 3
+  num_classes: 2
+  bilinear: False

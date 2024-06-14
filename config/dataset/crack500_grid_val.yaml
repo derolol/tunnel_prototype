@@ -1,0 +1,17 @@
+dataset:
+  target: dataset.crack500_val.Crack500Dataset
+  params:
+    train: false
+    file_list: /home/datasets/crack500_gen/grid/val.txt
+    image_root: /home/datasets/crack500_gen/grid/images
+    annotation_root: /home/datasets/crack500_gen/grid/annotations
+    image_format: jpg
+    annotation_format: png
+    out_size: 512
+    apply_transform: false
+
+data_loader:
+  batch_size: 16
+  shuffle: false
+  num_workers: 16
+  drop_last: false
