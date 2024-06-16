@@ -28,15 +28,17 @@ model:
 
     decode_dim: 256 # decoder
 
-    is_feature_quant: True # vector quant
-    embedding_frozen: True
-    quant_fuse_module: 'spatial'
-    quant_dim: 1
+    is_feature_quant: False # vector quant
+    embedding_frozen: False
+    quant_fuse_module: 'channel'
+    quant_dim: 3
     num_vectors: 1024
     latent_dim: 256
 
     is_seg_refine: True # refine seg
-    sample_size: 3
+    sample_size: 1
+    is_edge_weight: True
+    sample_beta: 0.75
 
 lightning:
   seed: 231
@@ -63,7 +65,7 @@ lightning:
     target: logger.tensorboard_logger.TensorBoardLogger
     params:
       save_dir: train_crack500_viz
-      name: crack500_avqseg_soft_quant_fs_refine3
+      name: crack500_avqseg_soft_refine_edge
   
   callbacks:
     - target: callback.image_logger.ImageLogger

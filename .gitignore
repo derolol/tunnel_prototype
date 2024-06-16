@@ -8,6 +8,7 @@ output/
 
 /train_viz
 /train_crack500_viz
+/val_cracktree200
 /val_*crack500
 /wandb
 /model/weight

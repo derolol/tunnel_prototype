@@ -35,7 +35,10 @@ model:
     num_vectors: 1024
     latent_dim: 256
 
-    is_seg_refine: False # refine seg
+    is_seg_refine: True # refine seg
+    sample_size: 1
+    is_edge_weight: False
+    sample_beta: 0.75
 
 lightning:
   seed: 231

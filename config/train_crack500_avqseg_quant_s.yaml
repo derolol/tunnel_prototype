@@ -18,26 +18,27 @@ model:
 
     in_channels: 3 # encoder
     embed_dims: [32, 64, 128, 256]
-    depths: [4, 4, 4, 4]
+    depths: [2, 2, 2, 2]
     num_heads: [1, 2, 4, 8]
     mlp_ratios: [4, 4, 4, 4]
     qkv_bias: True
     sr_ratios: [8, 4, 2, 1]
     drop_rate: 0.
-    pooling_module: 'soft'
+    pooling_module: 'default'
 
     decode_dim: 256 # decoder
 
     is_feature_quant: True # vector quant
-    embedding_frozen: True
+    embedding_frozen: False
     quant_fuse_module: 'spatial'
     quant_dim: 3
     num_vectors: 1024
     latent_dim: 256
 
-    is_seg_refine: True # refine seg
+    is_seg_refine: False # refine seg
     sample_size: 1
-    is_edge_weight: True
+    is_edge_weight: False
+    sample_beta: 0.75
 
 lightning:
   seed: 231
@@ -64,7 +65,7 @@ lightning:
     target: logger.tensorboard_logger.TensorBoardLogger
     params:
       save_dir: train_crack500_viz
-      name: crack500_avqseg4_soft_quant_fs_refine_edge
+      name: crack500_avqseg_quant_s
   
   callbacks:
     - target: callback.image_logger.ImageLogger

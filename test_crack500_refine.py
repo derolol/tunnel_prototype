@@ -19,12 +19,12 @@ from util.common import instantiate_from_config, load_state_dict
 
 class Validation():
 
-    log_save_dir = 'val_thick_crack500'
+    log_save_dir = 'val_refine_crack500'
 
     model_meta = {
         'segformer': {
             'config': '/home/lib/generate_seg/config/train_crack500_segformer.yaml',
-            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_segformer/without_pretrained/checkpoints/step=20000.ckpt',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_segformer/without_pretrained/checkpoints/step=18000.ckpt',
             'log_name': 'segformer',
         },
         'hrnet': {
@@ -34,7 +34,7 @@ class Validation():
         },
         'deeplabv3plus': {
             'config': '/home/lib/generate_seg/config/train_crack500_deeplabv3plus.yaml',
-            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_deeplabv3plus/version_0/checkpoints/step=20000.ckpt',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_deeplabv3plus/version_0/checkpoints/step=18000.ckpt',
             'log_name': 'deeplabv3plus',
         },
         'bisenet': {
@@ -44,7 +44,7 @@ class Validation():
         },
         'unet': {
             'config': '/home/lib/generate_seg/config/train_crack500_unet.yaml',
-            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_unet/version_0/checkpoints/step=20000.ckpt',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_unet/version_0/checkpoints/step=16000.ckpt',
             'log_name': 'unet',
         },
         'swin_unet': {
@@ -53,45 +53,45 @@ class Validation():
             'log_name': 'swin_unet',
         },
 
-        # 'avqseg_default': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_default.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_default/version_1/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_default',
-        # },
-        # 'avqseg_softmax': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft/version_1/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax',
-        # },
-        # 'avqseg_softmax_quant': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant/version_1/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax_quant',
-        # },
-        # 'avqseg_softmax_quant_spatial': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant_s.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_s/version_2/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax_quant_spatial',
-        # },
-        # 'avqseg_softmax_quant_freeze_spatial': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant_fs.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_fs/version_1/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax_quant_freeze_spatial',
-        # },
-        # 'avqseg_softmax_refine': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_refine.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_refine/version_2/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax_refine',
-        # },
-        # 'avqseg_softmax_quant_spatial_refine_edge': {
-        #     'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant_s_refine_edge.yaml',
-        #     'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_s_refine_edge/version_19/checkpoints/step=20000.ckpt',
-        #     'log_name': 'avqseg_softmax_quant_spatial_refine_edge',
-        # },
-        'avqseg_softmax_quant_freeze_spatial_refine_edge': {
+        'crack500_avqseg_default': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_default.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_default/version_3/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_default',
+        },
+        'crack500_avqseg_soft': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft/version_3/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_soft',
+        },
+        'crack500_avqseg_quant_fs': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_quant_fs.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_quant_fs/version_0/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_quant_fs',
+        },
+        'crack500_avqseg_refine_edge': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_refine_edge.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_refine_edge/version_0/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_refine_edge',
+        },
+        'crack500_avqseg_soft_quant_fs': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant_fs.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_fs/version_3/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_soft_quant_fs',
+        },
+        'crack500_avqseg_soft_quant_fs_refine_edge': {
             'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_quant_fs_refine_edge.yaml',
-            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_fs_refine_edge/version_16/checkpoints/step=20000.ckpt',
-            'log_name': 'avqseg_softmax_quant_freeze_spatial_refine_edge',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_quant_fs_refine_edge/version_17/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_soft_quant_fs_refine_edge',
+        },
+        'crack500_avqseg_soft_refine_edge': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_softmax_refine_edge.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_soft_refine_edge/version_0/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_soft_refine_edge',
+        },
+        'crack500_avqseg_quant_fs_refine_edge': {
+            'config': '/home/lib/generate_seg/config/train_crack500_avqseg_quant_fs_refine_edge.yaml',
+            'model_path': '/home/lib/generate_seg/train_crack500_viz/crack500_avqseg_quant_fs_refine_edge/version_0/checkpoints/step=20000.ckpt',
+            'log_name': 'crack500_avqseg_quant_fs_refine_edge',
         },
         # '': {
         #     'config': '',
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     # Load data
     data_module = DataModule(num_classes=2,
                              train_config='/home/lib/generate_seg/config/dataset/crack500_grid_val.yaml',
-                             val_config='/home/lib/generate_seg/config/dataset/crack500_thick_val.yaml')
+                             val_config='/home/lib/generate_seg/config/dataset/crack500_refine_val.yaml')
     data_module.setup("fit")
     val_dataloader = data_module.val_dataloader()
 

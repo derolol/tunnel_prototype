@@ -429,9 +429,9 @@ class DomainFuse(nn.Module):
         super().__init__()
 
         self.spatial_attn = nn.Sequential(
-            ConvModule(in_channels=1, out_channels=2,
+            ConvModule(in_channels=dim, out_channels=dim,
                        kernel_size=3, stride=1, padding=1),
-            ConvModule(in_channels=2, out_channels=2,
+            ConvModule(in_channels=dim, out_channels=2,
                        kernel_size=1, stride=1, padding=0))
         
         self.softmax = nn.Softmax(dim=1)
@@ -445,16 +445,17 @@ class DomainFuse(nn.Module):
     def forward(self, inp_feats):
 
         attn_map = inp_feats[0] * inp_feats[1]
-        attn_map = attn_map.sum(dim=1, keepdim=True)
+        # attn_map = attn_map.sum(dim=1, keepdim=True)
 
         attn_map = self.spatial_attn(attn_map)
         attn_map = self.softmax(attn_map)
 
-        return inp_feats[0] * attn_map[:, 0 : 1, :, :] + inp_feats[1] * attn_map[:, 1 :, :, :]
+        return inp_feats[0] * attn_map[:, 0 : 1, :, :] * self.weight[:, 0 : 1, :, :] + \
+            inp_feats[1] * attn_map[:, 1 :, :, :] * self.weight[:, 1 :, :, :]
     
 class DefaultMaxPool(nn.Module):
-    
-    def __init__(self, dim) -> None:
+
+    def __init__(self, dim, *args, **kwargs) -> None:
 
         super().__init__()
 
@@ -470,7 +471,18 @@ class DefaultMaxPool(nn.Module):
 
 class SoftMaxPool(nn.Module):
 
-    def __init__(self, dim) -> None:
+    def __init__(self,
+                 dim,
+                 num_heads,
+                 mlp_ratio=4.,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 drop=0.,
+                 attn_drop=0.,
+                 drop_path=0.,
+                 act_layer=nn.GELU,
+                 norm_layer=nn.LayerNorm,
+                 sr_ratio=1) -> None:
 
         super().__init__()
 
@@ -481,10 +493,32 @@ class SoftMaxPool(nn.Module):
         self.soft_indice = ConvModule(in_channels=dim, out_channels=dim,
                                       kernel_size=3, stride=2, padding=1)
         
-        self.conv_down = ConvModule(in_channels=dim, out_channels=dim,
-                                    kernel_size=3, stride=2, padding=1)
-        
         self.drop = nn.Dropout()
+
+        self.conv_down = nn.Sequential(
+            AttentionBlock(dim=dim,
+                           drop_path=drop_path, 
+                           num_heads=num_heads,
+                           qkv_bias=qkv_bias,
+                           sr_ratio=sr_ratio,
+                           qk_scale=qk_scale,
+                           attn_drop=attn_drop,
+                           mlp_ratio=mlp_ratio,
+                           drop=drop,
+                           norm_layer=norm_layer),
+            AttentionBlock(dim=dim,
+                           drop_path=drop_path, 
+                           num_heads=num_heads,
+                           qkv_bias=qkv_bias,
+                           sr_ratio=sr_ratio,
+                           qk_scale=qk_scale,
+                           attn_drop=attn_drop,
+                           mlp_ratio=mlp_ratio,
+                           drop=drop,
+                           norm_layer=norm_layer),
+            ConvModule(in_channels=dim, out_channels=dim,
+                        kernel_size=3, stride=2, padding=1)
+        )
         
         self.apply(_init_weights)
     
@@ -567,7 +601,16 @@ class SegEncoder(nn.Module):
                 for d in range(depths[i])]
 
             # down sample 1/2
-            pool = pooling_module(dim=output_channel)
+            pool = pooling_module(dim=output_channel,
+                                  drop_path=0., 
+                                  num_heads=num_heads[i],
+                                  qkv_bias=qkv_bias,
+                                  sr_ratio=sr_ratios[i],
+                                  qk_scale=qk_scale,
+                                  attn_drop=attn_drop_rate,
+                                  mlp_ratio=mlp_ratios[i],
+                                  drop=drop_rate,
+                                  norm_layer=norm_layer)
             
             self.blocks.append(nn.Sequential(path_embed, *layers, pool))
         
@@ -783,8 +826,8 @@ class SegDecoder(nn.Module):
 
         if self.is_seg_refine:
 
-            dim = 33
-            self.edge_detect = EdgeDetect()
+            dim = linear_dim + 32
+            # self.edge_detect = EdgeDetect()
             self.scale3 = DWConv(in_channels=dim,
                             out_channels=embed_dims[0],
                             kernel_size=3,
@@ -805,11 +848,11 @@ class SegDecoder(nn.Module):
                                  kernel_size=1,
                                  stride=1,
                                  padding=0)
-            self.edge_concat = ConvModule(in_channels=linear_dim * 2,
-                                 out_channels=linear_dim,
-                                 kernel_size=1,
-                                 stride=1,
-                                 padding=0)
+            # self.edge_concat = ConvModule(in_channels=linear_dim * 2,
+            #                      out_channels=linear_dim,
+            #                      kernel_size=1,
+            #                      stride=1,
+            #                      padding=0)
 
         self.apply(_init_weights)
 
@@ -846,19 +889,19 @@ class SegDecoder(nn.Module):
 
         if self.is_seg_refine:
             # [new]
-            crack_seg = seg.softmax(dim=1)[:, 1 : 2, :, :]
-            edge_mask = self.edge_detect(crack_seg)
+            # crack_seg = seg.softmax(dim=1)[:, 1 : 2, :, :]
+            # edge_mask = self.edge_detect(crack_seg)
 
-            image_edge = torch.concat([x, edge_mask], dim=1)
+            image_edge = torch.concat([x, fea], dim=1)
             image_edge3 = self.scale3(image_edge)
             image_edge5 = self.scale3(image_edge)
             image_edge7 = self.scale5(image_edge)
 
             image_edge = self.edge_aug(torch.concat([image_edge3, image_edge5, image_edge7], dim=1))
 
-            fea = self.edge_concat(torch.concat([fea, image_edge], dim=1)) + fea
+            # fea = self.edge_concat(torch.concat([fea, image_edge], dim=1)) + fea
 
-            seg = self.seg(fea)
+            seg = self.seg(image_edge)
 
         # return seg, image_edge
         return seg, origin_seg

@@ -1,5 +1,6 @@
 import einops
 import numpy as np
+from skimage.morphology import skeletonize
 
 import torch
 from torch import nn
@@ -390,3 +391,34 @@ class ModelModule(LightningModule):
             rows.append(row)
 
         return rows, out
+    
+    def test_s_all(self, batch, batch_idx):
+        
+        images, annotations, filename = batch
+        B = images.shape[0]
+        annotations = annotations.squeeze(dim=1)
+        out = self(images)
+        pred = out['seg']
+        out = pred.argmax(dim=1)
+
+        skeleton = skeletonize(out.cpu().numpy().astype(np.uint8))
+        out = torch.tensor(skeleton).to(out)
+
+        rows = []
+        for b in range(B):
+            precision = self.metric_fn['segment_precision'](out[b : b + 1], annotations[b : b + 1]).cpu().numpy().tolist()
+            recall = self.metric_fn['segment_recall'](out[b : b + 1], annotations[b : b + 1]).cpu().numpy().tolist()
+            iou = self.metric_fn['segment_iou'](out[b : b + 1], annotations[b : b + 1]).cpu().numpy().tolist()
+            f1score = self.metric_fn['segment_f1score'](out[b : b + 1], annotations[b : b + 1]).cpu().numpy().tolist()
+            row = [
+                filename[b],
+                '|'.join([str(i) for i in precision]),
+                '|'.join([str(i) for i in recall]),
+                '|'.join([str(i) for i in iou]),
+                '|'.join([str(i) for i in f1score])
+            ]
+            rows.append(row)
+
+        return rows, out
+
+    

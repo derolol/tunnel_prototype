@@ -16,10 +16,14 @@ class SegFBetaScoreMetric(Module):
         self.metric = MulticlassFBetaScore(num_classes=num_classes, beta=beta, average=None)
 
     def forward(self, preds, target):
-        assert len(preds.shape) == 4 # [B, C, H, W]
-        assert len(target.shape) == 3 # [B, H, W]
+        # assert len(preds.shape) == 4 # [B, C, H, W]
+        # assert len(target.shape) == 3 # [B, H, W]
 
-        preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        if len(preds.shape) == 4: # [B, C, H, W]
+            preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        elif len(preds.shape) == 3: # [B, H, W]
+            preds = einops.rearrange(preds, 'b h w -> (b h w)')
+            preds = preds.float()
         target = einops.rearrange(target, 'b h w -> (b h w)')
         
         return self.metric.to(preds)(preds, target)
@@ -32,10 +36,14 @@ class SegPrecisionMetric(Module):
         self.metric = MulticlassPrecision(num_classes=num_classes, average=None)
 
     def forward(self, preds, target):
-        assert len(preds.shape) == 4 # [B, C, H, W]
-        assert len(target.shape) == 3 # [B, H, W]
+        # assert len(preds.shape) == 4 # [B, C, H, W]
+        # assert len(target.shape) == 3 # [B, H, W]
 
-        preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        if len(preds.shape) == 4: # [B, C, H, W]
+            preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        elif len(preds.shape) == 3: # [B, H, W]
+            preds = einops.rearrange(preds, 'b h w -> (b h w)')
+            preds = preds.float()
         target = einops.rearrange(target, 'b h w -> (b h w)')
         
         return self.metric.to(preds)(preds, target)
@@ -48,10 +56,14 @@ class SegRecallMetric(Module):
         self.metric = MulticlassRecall(num_classes=num_classes, average=None)
 
     def forward(self, preds, target):
-        assert len(preds.shape) == 4 # [B, C, H, W]
-        assert len(target.shape) == 3 # [B, H, W]
+        # assert len(preds.shape) == 4 # [B, C, H, W]
+        # assert len(target.shape) == 3 # [B, H, W]
 
-        preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        if len(preds.shape) == 4: # [B, C, H, W]
+            preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        elif len(preds.shape) == 3: # [B, H, W]
+            preds = einops.rearrange(preds, 'b h w -> (b h w)')
+            preds = preds.float()
         target = einops.rearrange(target, 'b h w -> (b h w)')
         
         return self.metric.to(preds)(preds, target)
@@ -64,9 +76,14 @@ class SegAccuracyMetric(Module):
         self.metric = MulticlassAccuracy(num_classes=num_classes, average=None)
 
     def forward(self, preds, target):
-        assert len(preds.shape) == 4 # [B, C, H, W]
-        assert len(target.shape) == 3 # [B, H, W]
-        preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        # assert len(preds.shape) == 4 # [B, C, H, W]
+        # assert len(target.shape) == 3 # [B, H, W]
+
+        if len(preds.shape) == 4: # [B, C, H, W]
+            preds = einops.rearrange(preds, 'b c h w -> (b h w) c')
+        elif len(preds.shape) == 3: # [B, H, W]
+            preds = einops.rearrange(preds, 'b h w -> (b h w)')
+            preds = preds.float()
         target = einops.rearrange(target, 'b h w -> (b h w)')
         
         return self.metric.to(preds)(preds, target)
@@ -79,10 +96,12 @@ class SegIoUMetric(Module):
         # self.metric = MulticlassAccuracy(num_classes=num_classes, average=None)
 
     def forward(self, preds, target):
-        assert len(preds.shape) == 4 # [B, C, H, W]
-        assert len(target.shape) == 3 # [B, H, W]
+        # assert len(preds.shape) == 4 # [B, C, H, W]
+        # assert len(target.shape) == 3 # [B, H, W]
         
-        preds = preds.argmax(dim=1)
+        if len(preds.shape) == 4: # [B, C, H, W]
+            preds = preds.argmax(dim=1)
+            
         
         # 计算hist矩阵
         hist = self.get_hist(preds.flatten(), target.flatten(), self.num_classes)  

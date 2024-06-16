@@ -10,7 +10,7 @@ data:
 model:
   target: model.avqseg_module.ModelModule
   params:
-    learning_rate: 1e-3 # train
+    learning_rate: 5e-4 # 1e-3 # train
     quant_loss_beta: 0.25
     num_classes: 2
     type_classes: ["background", "crack"]
@@ -24,20 +24,20 @@ model:
     qkv_bias: True
     sr_ratios: [8, 4, 2, 1]
     drop_rate: 0.
-    pooling_module: 'soft'
+    pooling_module: 'default'
 
     decode_dim: 256 # decoder
 
     is_feature_quant: True # vector quant
-    embedding_frozen: False
-    quant_fuse_module: 'channel'
-    quant_dim: 1
+    embedding_frozen: True
+    quant_fuse_module: 'spatial'
+    quant_dim: 3
     num_vectors: 1024
     latent_dim: 256
 
     is_seg_refine: True # refine seg
     sample_size: 1
-    is_edge_weight: False
+    is_edge_weight: True
     sample_beta: 0.75
 
 lightning:
@@ -65,7 +65,7 @@ lightning:
     target: logger.tensorboard_logger.TensorBoardLogger
     params:
       save_dir: train_crack500_viz
-      name: crack500_avqseg_soft_quant_refine
+      name: crack500_avqseg_quant_fs_refine_edge
   
   callbacks:
     - target: callback.image_logger.ImageLogger
